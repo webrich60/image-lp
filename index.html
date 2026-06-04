@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>福井弁の恐竜くんLP - 画像書き出しツール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- ZIPファイル生成用の外部ライブラリ -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .slot-card { transition: all 0.2s ease; }
+        .slot-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+    </style>
+</head>
+<body class="text-gray-800 antialiased min-h-screen flex flex-col">
+
+    <!-- プレビュー環境での警告バナー（自動判定して表示） -->
+    <div id="iframe-warning" class="hidden bg-red-100 border-b border-red-200 text-red-800 text-sm font-bold px-4 py-3 text-center z-50">
+        ⚠️ 現在プレビュー画面で実行しているため、セキュリティ制限によりZIPダウンロードがブロックされる可能性があります。<br class="hidden sm:block">
+        確実に動作させるには、このコードを「image_tool.html」としてパソコンに保存し、ブラウザで直接開いてください。
+    </div>
+
+    <!-- ヘッダー -->
+    <header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🦖</span>
+                <h1 class="text-xl font-bold text-gray-800 hidden sm:block">LP画像一括書き出しツール</h1>
+                <h1 class="text-lg font-bold text-gray-800 sm:hidden">画像書き出しツール</h1>
+            </div>
+            <!-- 一括ダウンロードボタン -->
+            <button onclick="downloadZip()" id="download-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 sm:px-6 rounded-lg shadow-md transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span class="hidden sm:inline">ZIPで一括ダウンロード</span>
+                <span class="sm:hidden">ダウンロード</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-grow max-w-6xl mx-auto px-4 py-8 w-full">
+        <!-- 説明パネル -->
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-8">
+            <h2 class="font-bold text-blue-800 mb-2 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg>
+                使い方ガイド
+            </h2>
+            <ol class="list-decimal list-inside text-sm text-blue-900 space-y-1 ml-1">
+                <li>下の各枠に、LPで表示させたい画像をアップロードします（自動で最適サイズに縮小され、名前も自動変換されます）。</li>
+                <li>右上の<strong>「ZIPで一括ダウンロード」</strong>ボタンを押します。</li>
+                <li>ダウンロードされたZIPファイルを解凍すると、<strong><code class="bg-white px-1 rounded border border-blue-200">images</code></strong> というフォルダができます。</li>
+                <li>そのフォルダごと、GitHubのLP（index.html）があるのと同じ場所にアップロードすれば完了です！</li>
+            </ol>
+        </div>
+
+        <div id="image-slots-container" class="space-y-10">
+            <!-- JSで各セクションが生成されます -->
+        </div>
+    </main>
+
+    <footer class="bg-white border-t border-gray-200 py-6 text-center text-sm text-gray-500 mt-auto">
+        <p>福井弁の恐竜くんLP 専用ツール</p>
+    </footer>
+
+    <script>
+        // 画像データを一時保存するオブジェクト
+        const imageStore = {};
+
+        // プレビュー環境(iframe)かどうかを判定して警告を出す
+        if (window.self !== window.top) {
+            document.getElementById('iframe-warning').classList.remove('hidden');
+        }
+
+        // LPで必要な画像の定義
+        const imageDefinitions = [
+            {
+                section: "メイン・共通画像",
+                color: "green",
+                slots: [
+                    { id: 'top_main', name: 'トップ画像', desc: 'ファーストビューの大きな恐竜', filename: 'top_main.png' },
+                    { id: 'profile', name: 'プロフィール画像', desc: '下部のプロフィール欄用', filename: 'profile.png' }
+                ]
+            },
+            {
+                section: "トーク使用イメージ (3枚)",
+                color: "blue",
+                slots: [
+                    { id: 'chat_1', name: 'トーク画像1', desc: '「今日飲みに行く？」への返事', filename: 'chat_1.png' },
+                    { id: 'chat_2', name: 'トーク画像2', desc: '「手伝ってくれてありがとう！」への返事', filename: 'chat_2.png' },
+                    { id: 'chat_3', name: 'トーク画像3', desc: '「ごめん！準備遅れてる！」への返事', filename: 'chat_3.png' }
+                ]
+            },
+            {
+                section: "スタンプ一覧 (人気8個)",
+                color: "yellow",
+                slots: [
+                    { id: 'stamp_1', name: 'スタンプ1', desc: 'ほやほや！', filename: 'stamp_1.png' },
+                    { id: 'stamp_2', name: 'スタンプ2', desc: 'きのどくなの', filename: 'stamp_2.png' },
+                    { id: 'stamp_3', name: 'スタンプ3', desc: 'おえ〜', filename: 'stamp_3.png' },
+                    { id: 'stamp_4', name: 'スタンプ4', desc: 'はよしねま', filename: 'stamp_4.png' },
+                    { id: 'stamp_5', name: 'スタンプ5', desc: 'だんねーよ', filename: 'stamp_5.png' },
+                    { id: 'stamp_6', name: 'スタンプ6', desc: 'ほっこりしたわ', filename: 'stamp_6.png' },
+                    { id: 'stamp_7', name: 'スタンプ7', desc: 'つるつるいっぱい', filename: 'stamp_7.png' },
+                    { id: 'stamp_8', name: 'スタンプ8', desc: 'あかんけ', filename: 'stamp_8.png' }
+                ]
+            }
+        ];
+
+        window.onload = () => {
+            renderUI();
+            updateDownloadButtonState();
+        };
+
+        // UI（画像スロット）の描画
+        function renderUI() {
+            const container = document.getElementById('image-slots-container');
+            container.innerHTML = '';
+
+            imageDefinitions.forEach(group => {
+                const colorMap = {
+                    green: 'bg-green-100 text-green-800 border-green-200',
+                    blue: 'bg-blue-100 text-blue-800 border-blue-200',
+                    yellow: 'bg-yellow-100 text-yellow-800 border-yellow-200'
+                };
+                const headerColor = colorMap[group.color] || 'bg-gray-100 text-gray-800 border-gray-200';
+
+                const sectionDiv = document.createElement('div');
+                sectionDiv.className = 'bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden';
+                
+                const header = document.createElement('div');
+                header.className = `px-6 py-3 border-b font-bold ${headerColor}`;
+                header.innerText = group.section;
+                sectionDiv.appendChild(header);
+
+                const gridDiv = document.createElement('div');
+                gridDiv.className = 'p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6';
+
+                group.slots.forEach(slot => {
+                    const slotHTML = `
+                        <div class="slot-card bg-gray-50 border border-gray-200 rounded-xl p-4 flex flex-col items-center relative">
+                            <div class="text-center mb-3 w-full">
+                                <h3 class="font-bold text-gray-800 text-sm">${slot.name}</h3>
+                                <p class="text-xs text-gray-500 mt-1 h-8">${slot.desc}</p>
+                                <p class="text-xs font-mono text-gray-400 bg-gray-100 rounded px-1 py-0.5 mt-1 inline-block text-center w-full break-all">📁 ${slot.filename}</p>
+                            </div>
+                            
+                            <!-- プレビュー領域 -->
+                            <div class="w-24 h-24 bg-white border border-dashed border-gray-300 rounded-lg flex items-center justify-center mb-4 overflow-hidden group relative">
+                                <img id="preview-${slot.id}" class="w-full h-full object-contain hidden" alt="プレビュー">
+                                <div id="placeholder-${slot.id}" class="text-gray-400 flex flex-col items-center">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mb-1 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    <span class="text-[10px]">未設定</span>
+                                </div>
+                            </div>
+
+                            <!-- アップロードボタン -->
+                            <div class="w-full">
+                                <label class="cursor-pointer flex items-center justify-center w-full bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg text-sm transition">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                                    画像を選ぶ
+                                    <input type="file" accept="image/png, image/jpeg" class="hidden" onchange="processImage(this, '${slot.id}', '${slot.filename}')">
+                                </label>
+                            </div>
+                            
+                            <!-- 完了マーク -->
+                            <div id="check-${slot.id}" class="absolute -top-2 -right-2 bg-green-500 text-white rounded-full p-1 hidden shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" /></svg>
+                            </div>
+                        </div>
+                    `;
+                    gridDiv.insertAdjacentHTML('beforeend', slotHTML);
+                });
+
+                sectionDiv.appendChild(gridDiv);
+                container.appendChild(sectionDiv);
+            });
+        }
+
+        // 画像が選択された時の処理（リサイズとPNG化）
+        function processImage(input, slotId, filename) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    // 最大500pxに制限
+                    const MAX_SIZE = 500;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_SIZE) {
+                            height *= MAX_SIZE / width;
+                            width = MAX_SIZE;
+                        }
+                    } else {
+                        if (height > MAX_SIZE) {
+                            width *= MAX_SIZE / height;
+                            height = MAX_SIZE;
+                        }
+                    }
+
+                    // Canvas描画
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // PNGとしてData URL化 (透過を維持)
+                    const dataUrl = canvas.toDataURL('image/png');
+                    const base64Data = dataUrl.split(',')[1];
+
+                    // メモリに保存
+                    imageStore[slotId] = {
+                        filename: filename,
+                        base64: base64Data,
+                        dataUrl: dataUrl
+                    };
+
+                    // UIの更新
+                    const previewEl = document.getElementById(`preview-${slotId}`);
+                    const placeholderEl = document.getElementById(`placeholder-${slotId}`);
+                    const checkEl = document.getElementById(`check-${slotId}`);
+
+                    previewEl.src = dataUrl;
+                    previewEl.classList.remove('hidden');
+                    placeholderEl.classList.add('hidden');
+                    checkEl.classList.remove('hidden');
+
+                    updateDownloadButtonState();
+                }
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        function updateDownloadButtonState() {
+            const btn = document.getElementById('download-btn');
+            const hasImages = Object.keys(imageStore).length > 0;
+            
+            if (hasImages) {
+                btn.disabled = false;
+                // 初めて有効になった時に少し弾むアニメーション
+                if (!btn.classList.contains('animate-bounce-once')) {
+                    btn.classList.add('animate-bounce');
+                    setTimeout(() => btn.classList.remove('animate-bounce'), 1000);
+                    btn.classList.add('animate-bounce-once');
+                }
+            } else {
+                btn.disabled = true;
+                btn.classList.remove('animate-bounce-once');
+            }
+        }
+
+        // ZIP化してダウンロード実行
+        function downloadZip() {
+            const keys = Object.keys(imageStore);
+            if (keys.length === 0) {
+                alert('少なくとも1つの画像を設定してください。');
+                return;
+            }
+
+            const btn = document.getElementById('download-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<svg class="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 圧縮中...';
+            btn.disabled = true;
+
+            try {
+                const zip = new JSZip();
+                const imgFolder = zip.folder("images");
+
+                keys.forEach(key => {
+                    const imgData = imageStore[key];
+                    imgFolder.file(imgData.filename, imgData.base64, {base64: true});
+                });
+
+                zip.generateAsync({type: "blob"})
+                .then(function(content) {
+                    saveAs(content, "fukui_lp_images.zip");
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                })
+                .catch(function(error) {
+                    console.error("ZIP生成時エラー:", error);
+                    alert("ZIPファイルの生成に失敗しました。\nエラー詳細: " + error.message + "\n※プレビュー画面の制限の可能性があります。コードをPCに保存して実行してください。");
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                });
+            } catch (error) {
+                console.error("予期せぬエラー:", error);
+                alert("予期せぬエラーが発生しました。\n※このプレビュー環境ではダウンロードが制限されている場合があります。コードをPCに保存して実行してください。");
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
